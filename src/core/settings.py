@@ -38,6 +38,10 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    "ninja_extra",
+    "ninja_jwt",
+    'accounts',
+    'telegram_bot'
 ]
 
 MIDDLEWARE = [
@@ -121,3 +125,10 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+
+# TELEGRAM
+TELEGRAM_BOT_TOKEN = config("TELEGRAM_BOT_TOKEN")
+# GITHUB_CLIENT_ID = config("GITHUB_CLIENT_ID")
+# GITHUB_CLIENT_SECRET = config("GITHUB_CLIENT_SECRET")
+# GITHUB_REDIRECT_URI = config("GITHUB_REDIRECT_URI")
