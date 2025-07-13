@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 
 from pathlib import Path
 from decouple import config
+import datetime
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -28,9 +29,8 @@ DEBUG = config("DEBUG")
 
 ALLOWED_HOSTS = []
 
-
 # Application definition
-
+AUTH_USER_MODEL = "accounts.User"
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
@@ -43,6 +43,11 @@ INSTALLED_APPS = [
     'accounts',
     'telegram_bot'
 ]
+
+NINJA_JWT = {
+    "ACCESS_TOKEN_LIFETIME": datetime.timedelta(minutes=60),
+    "REFRESH_TOKEN_LIFETIME": datetime.timedelta(days=7),
+}
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -129,6 +134,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # TELEGRAM
 TELEGRAM_BOT_TOKEN = config("TELEGRAM_BOT_TOKEN")
-# GITHUB_CLIENT_ID = config("GITHUB_CLIENT_ID")
-# GITHUB_CLIENT_SECRET = config("GITHUB_CLIENT_SECRET")
-# GITHUB_REDIRECT_URI = config("GITHUB_REDIRECT_URI")
+GITHUB_CLIENT_ID = config("GITHUB_CLIENT_ID")
+GITHUB_CLIENT_SECRET = config("GITHUB_CLIENT_SECRET")
+GITHUB_REDIRECT_URI = config("GITHUB_REDIRECT_URI")
+FERNET_KEY = config("FERNET_KEY")
