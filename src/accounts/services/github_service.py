@@ -1,13 +1,17 @@
-import requests
-from datetime import datetime, timedelta
-from cryptography.fernet import Fernet
 import logging
+from datetime import datetime, timedelta
+from typing import List, Optional
+
+import httpx
+from asgiref.sync import sync_to_async
+from cryptography.fernet import Fernet
 from django.conf import settings
 from django.db import transaction
+
 from ..models import *
-from typing import List , Optional
 
 logger = logging.getLogger(__name__)
+
 
 class GitHubService:
     def __init__(self):
@@ -20,21 +24,23 @@ class GitHubService:
     def decrypt_token(self, encrypted_token: str) -> str:
         return self.fernet.decrypt(encrypted_token.encode()).decode()
 
-    def _make_request(self, access_token: str, url: str, params: dict = None, headers: dict = None) -> dict:
-        """Helper method to make GitHub API requests"""
+    async def _make_request(self, access_token: str, url: str, params: dict = None, headers: dict = None) -> dict:
+        """Async helper method to make GitHub API requests"""
         if headers is None:
             headers = {**self.headers, "Authorization": f"Bearer {access_token}"}
         else:
             headers = {**headers, "Authorization": f"Bearer {access_token}"}
-        response = requests.get(url, headers=headers, params=params, timeout=10)
-        response.raise_for_status()
-        return response.json()
 
-    def get_user_data(self, access_token: str) -> dict:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url, headers=headers, params=params, timeout=10)
+            response.raise_for_status()
+            return response.json()
+
+    async def get_user_data(self, access_token: str) -> dict:
         """Fetch user data from GitHub"""
-        return self._make_request(access_token, "https://api.github.com/user")
+        return await self._make_request(access_token, "https://api.github.com/user")
 
-    def get_all_repos(self, access_token: str) -> List[dict]:
+    async def get_all_repos(self, access_token: str) -> List[dict]:
         """Fetch all repositories with pagination"""
         repos = []
         page = 1
@@ -42,7 +48,7 @@ class GitHubService:
 
         while True:
             try:
-                batch = self._make_request(
+                batch = await self._make_request(
                     access_token,
                     "https://api.github.com/user/repos",
                     params={"page": page, "per_page": per_page, "sort": "updated"}
@@ -55,27 +61,28 @@ class GitHubService:
 
                 if len(batch) < per_page:
                     break
-            except requests.HTTPError as e:
+            except httpx.HTTPError as e:
                 logger.error(f"Failed to fetch repos page {page}: {str(e)}")
                 break
 
         return repos
 
-    def get_repo_branches(self, access_token: str, full_name: str) -> List[dict]:
+    async def get_repo_branches(self, access_token: str, full_name: str) -> List[dict]:
         """Fetch branches for a repository"""
-        return self._make_request(
+        return await self._make_request(
             access_token,
             f"https://api.github.com/repos/{full_name}/branches"
         )
 
-    def get_repo_topics(self, access_token: str, full_name: str) -> dict:
+    async def get_repo_topics(self, access_token: str, full_name: str) -> dict:
         """Fetch repository topics"""
-        return self._make_request(
+        return await self._make_request(
             access_token,
             f"https://api.github.com/repos/{full_name}/topics",
             headers={"Accept": "application/vnd.github.mercy-preview+json"}
         )
 
+    @sync_to_async
     @transaction.atomic
     def update_user_data(self, user_data: dict, access_token: str) -> User:
         """Create or update user from GitHub data"""
@@ -96,6 +103,7 @@ class GitHubService:
         )
         return user
 
+    @sync_to_async
     @transaction.atomic
     def update_repository(self, user: User, repo_data: dict) -> Repository:
         """Create or update repository"""
@@ -113,34 +121,39 @@ class GitHubService:
         )
         return repo
 
-    @transaction.atomic
-    def update_branches(self, access_token: str, repository: Repository):
+    async def update_branches(self, access_token: str, repository: Repository):
         """Update branches for a repository"""
         try:
-            branches = self.get_repo_branches(access_token, repository.full_name)
-
-            # Delete old branches not present anymore
-            existing_branches = set(repository.branches.values_list("name", flat=True))
-            current_branches = {branch["name"] for branch in branches}
-            repository.branches.filter(
-                name__in=existing_branches - current_branches
-            ).delete()
-
-            # Create or update branches
-            for branch in branches:
-                commit = branch.get("commit", {})
-                Branch.objects.update_or_create(
-                    repository=repository,
-                    name=branch["name"],
-                    defaults={
-                        "protected": branch.get("protected", False),
-                        "last_commit_sha": commit.get("sha", ""),
-                        "last_commit_url": commit.get("url", ""),
-                    },
-                )
+            branches = await self.get_repo_branches(access_token, repository.full_name)
+            await self._update_branches_in_db(repository, branches)
         except Exception as e:
             logger.error(f"Failed to update branches for {repository.full_name}: {str(e)}")
 
+    @sync_to_async
+    @transaction.atomic
+    def _update_branches_in_db(self, repository: Repository, branches: List[dict]):
+        """Sync method to update branches in database"""
+        # Delete old branches not present anymore
+        existing_branches = set(repository.branches.values_list("name", flat=True))
+        current_branches = {branch["name"] for branch in branches}
+        repository.branches.filter(
+            name__in=existing_branches - current_branches
+        ).delete()
+
+        # Create or update branches
+        for branch in branches:
+            commit = branch.get("commit", {})
+            Branch.objects.update_or_create(
+                repository=repository,
+                name=branch["name"],
+                defaults={
+                    "protected": branch.get("protected", False),
+                    "last_commit_sha": commit.get("sha", ""),
+                    "last_commit_url": commit.get("url", ""),
+                },
+            )
+
+    @sync_to_async
     @transaction.atomic
     def _update_permissions(self, repository: Repository, permissions: dict):
         """Update repository permissions"""
@@ -156,6 +169,7 @@ class GitHubService:
                 },
             )
 
+    @sync_to_async
     @transaction.atomic
     def _update_license(self, repository: Repository, license_data: Optional[dict]):
         """Update repository license"""
@@ -171,24 +185,27 @@ class GitHubService:
                 },
             )
 
-    @transaction.atomic
-    def _update_topics(self, access_token: str, repository: Repository, repo_name: str):
+    async def _update_topics(self, access_token: str, repository: Repository, repo_name: str):
         """Update repository topics"""
         try:
-            topics_response = self._make_github_request(
+            topics_response = await self._make_request(
                 access_token,
                 f"https://api.github.com/repos/{repository.full_name}/topics",
                 headers={"Accept": "application/vnd.github.mercy-preview+json"},
             )
             topics = topics_response.get("names", [])
-
-            # Clear existing topics
-            repository.topics.clear()
-
-            # Add new topics
-            for topic_name in topics:
-                topic, _ = Topic.objects.get_or_create(name=topic_name)
-                repository.topics.add(topic)
+            await self._update_topics_in_db(repository, topics)
         except Exception as e:
             logger.error(f"Failed to update topics for {repo_name}: {str(e)}")
 
+    @sync_to_async
+    @transaction.atomic
+    def _update_topics_in_db(self, repository: Repository, topics: List[str]):
+        """Sync method to update topics in database"""
+        # Clear existing topics
+        repository.topics.clear()
+
+        # Add new topics
+        for topic_name in topics:
+            topic, _ = Topic.objects.get_or_create(name=topic_name)
+            repository.topics.add(topic)
