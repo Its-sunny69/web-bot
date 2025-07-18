@@ -41,7 +41,8 @@ INSTALLED_APPS = [
     "ninja_extra",
     "ninja_jwt",
     'accounts',
-    'telegram_bot'
+    'telegram_bot',
+    'preview'
 ]
 
 NINJA_JWT = {
