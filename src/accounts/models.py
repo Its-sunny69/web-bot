@@ -2,7 +2,7 @@ from django.db import models
 from django.contrib.auth.models import AbstractUser
 
 class User(AbstractUser):
-    github_id = models.BigIntegerField(unique=True)
+    github_id = models.BigIntegerField(unique=True, blank=True, null=True)
     chat_id = models.BigIntegerField(null=True, blank=True) 
     github_login = models.CharField(max_length=255)
     avatar = models.URLField(blank=True, null=True)
@@ -59,9 +59,9 @@ class Repository(models.Model):
     web_commit_signoff_required = models.BooleanField(default=False)
     visibility = models.CharField(max_length=10, choices=VISIBILITY_CHOICES, default='public')
     default_branch = models.CharField(max_length=100)
-    created_at = models.DateTimeField()
-    updated_at = models.DateTimeField()
-    pushed_at = models.DateTimeField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    pushed_at = models.DateTimeField(null=True, blank=True)
     
     class Meta:
         verbose_name_plural = "Repositories"
@@ -115,6 +115,7 @@ class Topic(models.Model):
     
 class OAuthState(models.Model):
     state = models.CharField(max_length=48, unique=True)
+    telegram_id = models.CharField(max_length=32, null=True)
     expires_at = models.DateTimeField()
     
     def __str__(self):

@@ -1,16 +1,21 @@
 import logging
 import secrets
 from datetime import datetime, timedelta
+import asyncio
 
 import httpx
 from django.conf import settings
 from django.shortcuts import redirect
+from django.http import HttpResponse
 from ninja_extra import api_controller, route
 from ninja_jwt.authentication import AsyncJWTAuth
 
 from .models import OAuthState, Repository, Branch
 from .schemas import *
 from .services.github_service import GitHubService
+from telegram import Bot
+
+bot = Bot(token=settings.TELEGRAM_BOT_TOKEN)
 
 logger = logging.getLogger(__name__)
 github_service = GitHubService()
@@ -25,12 +30,16 @@ class GitHubAuthController:
         """Initiate GitHub OAuth flow"""
         if not settings.GITHUB_CLIENT_ID or not settings.GITHUB_REDIRECT_URI:
             return 400, {"detail": "GitHub OAuth not configured", "code": 400}
+        
+        tg_id = request.GET.get("tg_id")  # ✅ Extract Telegram user ID
+        if not tg_id:
+         return 400, {"detail": "Missing tg_id in query params", "code": 400}
 
         scope = "repo,user"
         state = secrets.token_urlsafe(32)
 
         await OAuthState.objects.acreate(
-            state=state, expires_at=datetime.now() + timedelta(minutes=10)
+            state=state, telegram_id=tg_id, expires_at=datetime.now() + timedelta(minutes=10)
         )
 
         auth_url = (
@@ -65,6 +74,14 @@ class GitHubAuthController:
             code = request.GET.get("code")
             if not code:
                 return 400, {"detail": "Authorization code missing", "code": 400}
+            
+             # Get stored state with Telegram ID
+            state_obj = await OAuthState.objects.aget(state=state)
+            tg_id = state_obj.telegram_id
+
+
+             # Clean up
+            await OAuthState.objects.filter(state=state).adelete()
 
             # Exchange code for access token
             token_data = {
@@ -89,36 +106,41 @@ class GitHubAuthController:
                 return 400, {"detail": "Failed to obtain access token", "code": 400}
 
             # Get user data and all repositories
-            user_data = await github_service.get_user_data(access_token)
-            repos = await github_service.get_all_repos(access_token)
+            user_data = github_service.get_user_data(access_token)
+            repos_task = github_service.get_all_repos(access_token)
+            user_data, repos = await asyncio.gather(user_data, repos_task)
 
-            # Create/update user and all related data
+        # Update user
             user = await github_service.update_user_data(user_data, access_token)
-            for repo in repos:
+            user.chat_id = tg_id
+            await user.asave(update_fields=["chat_id"])
+            
+            semaphore = asyncio.Semaphore(10)
+            async def process_repo(repo):
+             async with semaphore:
                 repo_obj = await github_service.update_repository(user, repo)
-                await github_service.update_branches(access_token, repo_obj)
-                await github_service._update_permissions(
-                    repo_obj, repo.get("permissions", {})
-                )
-                await github_service._update_license(repo_obj, repo.get("license"))
-                await github_service._update_topics(
-                    access_token, repo_obj, repo["name"]
+                # Run all repo updates concurrently
+                await asyncio.gather(
+                    github_service.update_branches(access_token, repo_obj),
+                    github_service._update_permissions(
+                        repo_obj, repo.get("permissions", {})
+                    ),
+                    github_service._update_license(repo_obj, repo.get("license")),
+                    github_service._update_topics(
+                        access_token, repo_obj, repo["name"]
+                    ),
                 )
 
-            # Clean up
-            await OAuthState.objects.filter(state=state).adelete()
 
-            return 200, {
-                "login": user.github_login,
-                "id": user.github_id,
-                "avatar_url": user.avatar,
-                "bio": user.bio,
-                "public_repos": user.public_repos,
-                "followers": user.followers,
-                "following": user.following,
-                "access_token": github_service.encrypt_token(access_token),
-                "token_expiry": (datetime.now() + timedelta(days=7)).isoformat(),
-            }
+            await asyncio.gather(*[process_repo(repo) for repo in repos])
+            await bot.send_message(chat_id=tg_id, text="✅ Your repositories have been synced!")
+                
+            return HttpResponse(
+    "<h2>✅ GitHub login successful!</h2>"
+    "<p>You can return to Telegram now. Your repositories have been synced.</p>"
+)
+        
+        
         except Exception as e:
             logger.error(f"OAuth error: {str(e)}", exc_info=True)
             return 500, {"detail": "Authentication failed", "code": 500}
