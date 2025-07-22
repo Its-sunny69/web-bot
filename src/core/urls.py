@@ -16,12 +16,8 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path, include
-
-import telegram_bot.urls
 from .api import api
-import telegram_bot
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/', api.urls),
-    path('webhook/', telegram_bot.urls)
 ]

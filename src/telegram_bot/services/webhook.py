@@ -1,25 +1,31 @@
 import json
-from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
+import traceback
 from telegram import Update
-from .bot import build_bot  # Your bot initialization
+from .bot import build_bot
 
-# Build the bot application (once)
-app = build_bot()
+# Build bot once globally
+bot_app = build_bot()
 
-@csrf_exempt
-def handle_telegram_webhook(request):
+def handle_telegram_webhook(request_body: bytes):
     """
-    Django view to handle Telegram webhook updates.
-    Telegram will POST updates to this endpoint.
+    Processes the raw request body from Telegram.
+    Returns a dict response.
     """
-    if request.method == 'POST':
-        try:
-            data = json.loads(request.body.decode('utf-8'))  # Decode JSON
-            update = Update.de_json(data, app.bot)          # Convert to Update object
-            app.update_queue.put_nowait(update)             # Pass update to the bot's handlers
-            return JsonResponse({"status": "ok"})
-        except Exception as e:
-            return JsonResponse({"status": "error", "error": str(e)}, status=500)
+    try:
+        # Parse raw body (bytes -> dict)
+        data = json.loads(request_body.decode('utf-8'))
+        print("Incoming update:", data)  # Log the raw update to Vercel logs
 
-    return JsonResponse({"status": "invalid method"}, status=405)
+        # Convert JSON to Telegram Update object
+        update = Update.de_json(data, bot_app.bot)
+
+        # Push update to python-telegram-bot async queue
+        bot_app.update_queue.put_nowait(update)
+
+        return {"status": "ok"}
+
+    except Exception as e:
+        # Log full traceback for debugging in Vercel
+        print("Error processing Telegram update:", e)
+        print("Traceback:", traceback.format_exc())
+        return {"status": "error", "error": str(e)}
