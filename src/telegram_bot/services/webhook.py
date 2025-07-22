@@ -6,12 +6,13 @@ from .bot import build_bot
 # Build bot once globally
 bot_app = build_bot()
 
-def handle_telegram_webhook(request_body: bytes):
+def handle_telegram_webhook(request_body):
     """
     Processes the raw request body from Telegram.
     Returns a dict response.
     """
     try:
+        print(request_body)
         # Parse raw body (bytes -> dict)
         data = json.loads(request_body.decode('utf-8'))
         print("Incoming update:", data)  # Log the raw update to Vercel logs
