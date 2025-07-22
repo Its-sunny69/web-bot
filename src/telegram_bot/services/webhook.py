@@ -21,7 +21,8 @@ def handle_telegram_webhook(request_body):
         update = Update.de_json(data, bot_app.bot)
 
         # Push update to python-telegram-bot async queue
-        bot_app.update_queue.put_nowait(update)
+        bot_app.initialize()
+        bot_app.process_update(update)
 
         return {"status": "ok"}
 
