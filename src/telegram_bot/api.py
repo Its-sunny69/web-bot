@@ -5,5 +5,7 @@ from .services.webhook import handle_telegram_webhook
 @api_controller("/telegram", tags=["Telegram"])
 class TelegramController:
     @http_post("/webhook")
-    def webhook(self, request: HttpRequest):
-        return handle_telegram_webhook(request)
+    async def webhook(self, request: HttpRequest,data):
+        # Get the raw request body (Telegram update payload)
+       
+        return handle_telegram_webhook(data)

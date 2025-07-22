@@ -13,8 +13,8 @@ from ninja_jwt.authentication import AsyncJWTAuth
 from .models import OAuthState, Repository, Branch
 from .schemas import *
 from .services.github_service import GitHubService
+from telegram_bot.utils import notify_user
 from telegram import Bot
-
 bot = Bot(token=settings.TELEGRAM_BOT_TOKEN)
 
 logger = logging.getLogger(__name__)
@@ -133,7 +133,7 @@ class GitHubAuthController:
 
 
             await asyncio.gather(*[process_repo(repo) for repo in repos])
-            await bot.send_message(chat_id=tg_id, text="✅ Your repositories have been synced!")
+            await notify_user(tg_id, "✅ Your repositories have been synced!")
                 
             return HttpResponse(
     "<h2>✅ GitHub login successful!</h2>"
