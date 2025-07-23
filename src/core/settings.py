@@ -27,7 +27,7 @@ SECRET_KEY = config("SECRET_KEY")
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = config("DEBUG", default=False, cast=bool)
 
-ALLOWED_HOSTS = ['web-bot-six.vercel.app']
+ALLOWED_HOSTS = ['web-bot-six.vercel.app','localhost','127.0.0.1']
 
 # Application definition
 AUTH_USER_MODEL = "accounts.User"

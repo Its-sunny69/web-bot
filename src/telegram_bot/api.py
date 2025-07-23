@@ -8,4 +8,4 @@ class TelegramController:
     async def webhook(self, request: HttpRequest):
         # Get the raw request body (Telegram update payload)
         body = request.body
-        return handle_telegram_webhook(body)
+        return await handle_telegram_webhook(body)

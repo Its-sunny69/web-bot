@@ -5,12 +5,13 @@ from .bot import build_bot
 
 # Build bot once globally
 bot_app = build_bot()
-
-def handle_telegram_webhook(request_body):
+bot_initialized = False
+async def handle_telegram_webhook(request_body):
     """
     Processes the raw request body from Telegram.
     Returns a dict response.
     """
+    global bot_initialized
     try:
         print(request_body)
         # Parse raw body (bytes -> dict)
@@ -21,8 +22,13 @@ def handle_telegram_webhook(request_body):
         update = Update.de_json(data, bot_app.bot)
 
         # Push update to python-telegram-bot async queue
-        bot_app.initialize()
-        bot_app.process_update(update)
+        if not bot_initialized:
+            await bot_app.initialize()
+            await bot_app.start()
+            bot_initialized = True
+
+        # Process the update
+        await bot_app.process_update(update)
 
         return {"status": "ok"}
 
