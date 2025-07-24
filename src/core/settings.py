@@ -27,7 +27,7 @@ SECRET_KEY = config("SECRET_KEY")
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = config("DEBUG", default=False, cast=bool)
 
-ALLOWED_HOSTS = ['web-bot-six.vercel.app','localhost','127.0.0.1']
+ALLOWED_HOSTS = config("ALLOWED_HOSTS",cast=lambda v: [s.strip() for s in v.split(',')])
 
 # Application definition
 AUTH_USER_MODEL = "accounts.User"
@@ -139,3 +139,4 @@ GITHUB_CLIENT_ID = config("GITHUB_CLIENT_ID")
 GITHUB_CLIENT_SECRET = config("GITHUB_CLIENT_SECRET")
 GITHUB_REDIRECT_URI = config("GITHUB_REDIRECT_URI")
 FERNET_KEY = config("FERNET_KEY")
+SERVER_URL = config("SERVER_URL")
