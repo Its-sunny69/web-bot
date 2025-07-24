@@ -1,21 +1,31 @@
 from telegram.ext import Application, CommandHandler
 from .dispatcher import register_commands
-from telegram_bot.commands.start import start_command
-from telegram_bot.commands.login import login_command
-from telegram_bot.commands.logout import logout_command
 from django.conf import settings
+import logging
 
+logger = logging.getLogger(__name__)
 
 def build_bot():
-    token = settings.TELEGRAM_BOT_TOKEN
-    app = Application.builder().token(token).build()
-    register_commands(app)
-    return app
+    try:
+        token = settings.TELEGRAM_BOT_TOKEN
+        if not token:
+            raise ValueError("TELEGRAM_BOT_TOKEN is not set")
+        app = Application.builder().token(token).build()
+        register_commands(app)
+        logger.info("Bot initialized successfully")
+        return app
+    except Exception as e:
+        logger.error(f"Failed to initialize bot: {e}")
+        raise
 
-
-def run_bot():
-    application = Application.builder().token(settings.TELEGRAM_BOT_TOKEN).build()
-    application.add_handler(CommandHandler("start", start_command))
-    application.add_handler(CommandHandler("login", login_command))
-    application.add_handler(CommandHandler("logout", logout_command))
-    application.run_polling()
+async def start_bot():
+    """Initialize and start the bot for processing updates."""
+    try:
+        app = build_bot()
+        await app.initialize()
+        await app.start()
+        logger.info("Bot started")
+        return app
+    except Exception as e:
+        logger.error(f"Failed to start bot: {e}")
+        raise
