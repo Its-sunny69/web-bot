@@ -7,7 +7,7 @@ async def login_command(update, context):
     telegram_user_id = update.effective_user.id
     live_url = settings.SERVER_URL
     params = urlencode({"tg_id": telegram_user_id})
-    login_url = f"{live_url}/api/auth/github/login?{params}"
+    login_url = f"{live_url}api/auth/github/login?{params}"
    
    # Create a button
     keyboard = [
