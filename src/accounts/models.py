@@ -12,6 +12,12 @@ class User(AbstractUser):
     updated_at = models.DateTimeField(auto_now=True)
     bio = models.TextField(null=True, blank=True)
     public_repos = models.IntegerField(default=0)
+    selected_repo = models.ForeignKey("Repository",  # Referencing Repository as a string
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="selected_by"
+    )
     followers = models.IntegerField(default=0)
     following = models.IntegerField(default=0)
     
