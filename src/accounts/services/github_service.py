@@ -91,6 +91,7 @@ class GitHubService:
         user, created = User.objects.update_or_create(
             github_id=user_data["id"],
             defaults={
+                "username": user_data["login"],
                 "github_login": user_data["login"],
                 "avatar": user_data.get("avatar_url"),
                 "bio": user_data.get("bio"),
