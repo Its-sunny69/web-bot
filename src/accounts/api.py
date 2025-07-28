@@ -115,24 +115,9 @@ class GitHubAuthController:
             user.chat_id = tg_id
             await user.asave(update_fields=["chat_id"])
             
-            semaphore = asyncio.Semaphore(10)
-            async def process_repo(repo):
-             async with semaphore:
-                repo_obj = await github_service.update_repository(user, repo)
-                # Run all repo updates concurrently
-                await asyncio.gather(
-                    github_service.update_branches(access_token, repo_obj),
-                    github_service._update_permissions(
-                        repo_obj, repo.get("permissions", {})
-                    ),
-                    github_service._update_license(repo_obj, repo.get("license")),
-                    github_service._update_topics(
-                        access_token, repo_obj, repo["name"]
-                    ),
-                )
+            created_count = await github_service.update_repository(user, repos)
 
-
-            await asyncio.gather(*[process_repo(repo) for repo in repos])
+            logger.info(f"Repositories synced: {created_count} created")
             await notify_user(tg_id, "✅ Your repositories have been synced!")
                 
             return HttpResponse(
