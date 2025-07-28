@@ -106,21 +106,39 @@ class GitHubService:
 
     @sync_to_async
     @transaction.atomic
-    def update_repository(self, user: User, repo_data: dict) -> Repository:
-        """Create or update repository"""
-        repo, created = Repository.objects.update_or_create(
-            repo_id=repo_data["id"],
-            defaults={
-                "user": user,
-                "node_id": repo_data["node_id"],
-                "name": repo_data["name"],
-                "full_name": repo_data["full_name"],
-                "private": repo_data["private"],
-                "description": repo_data.get("description"),
-                # ... (keep all other repository fields from your original code)
-            },
+    def update_repository(self, user: User, repos: dict) -> Repository:
+        """Bulk insert repositories with only basic info (skip updates)."""
+        if not repos:
+                return 0
+
+        repo_ids = [r["id"] for r in repos]
+
+    # Get existing repo IDs for this user so we don't duplicate
+        existing_ids = set(
+        Repository.objects.filter(user=user, repo_id__in=repo_ids)
+        .values_list("repo_id", flat=True)
         )
-        return repo
+
+        to_create = []
+        for repo in repos:
+            if repo["id"] not in existing_ids:
+                to_create.append(
+                Repository(
+                    repo_id=repo["id"],
+                    user=user,
+                    node_id=repo["node_id"],
+                    name=repo["name"],
+                    full_name=repo["full_name"],
+                    private=repo["private"],
+                    description=repo.get("description"),
+                )
+            )
+
+     # Bulk create only new repos
+        if to_create:
+            Repository.objects.bulk_create(to_create, batch_size=100)
+
+        return len(to_create)
 
     async def update_branches(self, access_token: str, repository: Repository):
         """Update branches for a repository"""
