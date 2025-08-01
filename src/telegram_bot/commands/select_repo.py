@@ -1,22 +1,21 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from accounts.models import User, Repository
+from accounts.services.github_service import GitHubService
 from asgiref.sync import sync_to_async
+from ..helpers import get_github_user
 
-
-# Step 1: Command to show repo selection
+github_service = GitHubService()
 async def select_repo_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     telegram_user_id = update.effective_user.id
-
-    # Check if user exists
-    user = await User.objects.filter(chat_id=telegram_user_id).afirst()
+    user = await get_github_user(telegram_user_id)
     if not user:
         await update.message.reply_text("You haven't linked your GitHub account yet. Use /login to connect.")
         return
 
-    # Fetch repos (top 10 to avoid huge keyboard)
+    
     repos_qs = Repository.objects.filter(user=user).order_by('-updated_at')
-    repos = await sync_to_async(list)(repos_qs[:10])  # limit to 10 for now
+    repos = await sync_to_async(list)(repos_qs)  
 
     if not repos:
         await update.message.reply_text("No repositories found for your account.")
@@ -24,7 +23,7 @@ async def select_repo_command(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     # Create inline keyboard
     keyboard = [
-        [InlineKeyboardButton(repo.name, callback_data=f"select_repo:{repo.id}")]
+        [InlineKeyboardButton(repo.full_name, callback_data=f"select_repo:{repo.id}")]
         for repo in repos
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -49,10 +48,16 @@ async def select_repo_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     if not repo or not user:
         await query.edit_message_text("Something went wrong. Please try again.")
         return
-
-    # Store the selected repo (you can add a field in User model: selected_repo = ForeignKey)
-    user.selected_repo = repo
-    await sync_to_async(user.save)()
-
-    await query.edit_message_text(f"Repository *{repo.full_name}* selected! The AI will now work on this repo.",
+    
+    try:
+         await github_service.update_branches(user.access_token, repo)
+         url = f"https://api.github.com/repos/{repo.full_name}"
+         repo_data = await github_service._make_request(user.access_token,url)
+         await github_service._update_permissions(repo, repo_data.get("permissions", {}))
+         user.selected_repo = repo
+         await sync_to_async(user.save)()
+         await query.edit_message_text(f"Repository *{repo.full_name}* selected! The AI will now work on this repo.",
                                    parse_mode="Markdown")
+    
+    except Exception as e:
+        await query.edit_message_text(f"Repo selected, but failed to fetch extra data: {str(e)}")
