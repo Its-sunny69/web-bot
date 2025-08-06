@@ -50,14 +50,40 @@ async def select_repo_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         return
     
     try:
-         await github_service.update_branches(user.access_token, repo)
+         branch_data = await github_service.update_branches(user.access_token, repo)
          url = f"https://api.github.com/repos/{repo.full_name}"
          repo_data = await github_service._make_request(user.access_token,url)
          await github_service._update_permissions(repo, repo_data.get("permissions", {}))
          user.selected_repo = repo
          await sync_to_async(user.save)()
-         await query.edit_message_text(f"Repository *{repo.full_name}* selected! The AI will now work on this repo.",
-                                   parse_mode="Markdown")
+         repo_summary= (f"Repository *{repo.full_name}* selected! The AI will now work on this repo.")
+         
+         if branch_data:
+            keyboard = [
+                [InlineKeyboardButton(b["name"], callback_data=f"select_branch:{b['name']}")]
+                for b in branch_data
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.edit_message_text(
+                f"{repo_summary}\n🌿 *Select a branch:*",
+                reply_markup=reply_markup,
+                parse_mode="Markdown"
+            )
+         else:
+            await query.edit_message_text(f"{repo_summary}\n_No branches found._", parse_mode="Markdown")
     
     except Exception as e:
         await query.edit_message_text(f"Repo selected, but failed to fetch extra data: {str(e)}")
+
+
+async def select_branch_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    branch_name = query.data.split(":")[1]
+    user = await User.objects.filter(chat_id=query.from_user.id).afirst()
+
+    user.current_branch = branch_name
+    await sync_to_async(user.save)()
+
+    await query.edit_message_text(f"🌿 Branch set to *{branch_name}*", parse_mode="Markdown")
