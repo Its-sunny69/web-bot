@@ -79,7 +79,7 @@ class GitHubService:
     @transaction.atomic
     def update_user_data(self, user_data: dict, access_token: str) -> User:
         """Create or update user from GitHub data"""
-        encrypted_token = self.encrypt_token(access_token)
+       
 
         user, created = User.objects.update_or_create(
             github_id=user_data["id"],
@@ -91,7 +91,7 @@ class GitHubService:
                 "public_repos": user_data.get("public_repos", 0),
                 "followers": user_data.get("followers", 0),
                 "following": user_data.get("following", 0),
-                "access_token": encrypted_token,
+                "access_token": access_token,
                 "sso_token_expiry": datetime.now() + timedelta(days=7),
             },
         )
