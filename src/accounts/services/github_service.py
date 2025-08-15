@@ -3,10 +3,6 @@ from datetime import datetime, timedelta
 from typing import List, Optional
 
 import httpx
-from asgiref.sync import sync_to_async
-from cryptography.fernet import Fernet
-from django.conf import settings
-from django.db import transaction
 
 from ..models import *
 
@@ -102,10 +98,12 @@ class GitHubService:
 
         repo_ids = [r["id"] for r in repos]
         existing_ids = set(
-            await Repository.objects.filter(
-                user=user, 
-                repo_id__in=repo_ids
-            ).values_list("repo_id", flat=True).alist()
+            [
+                r.repo_id
+                async for r in Repository.objects.filter(
+                    user=user, repo_id__in=repo_ids
+                )
+            ]
         )
 
         to_create = [
@@ -126,12 +124,13 @@ class GitHubService:
             created = await Repository.objects.abulk_create(to_create, batch_size=100)
             return created
         return []
+
     async def update_branches(self, access_token: str, repository: Repository):
         """Update branches for a repository"""
         try:
             branches = await self.get_repo_branches(access_token, repository.full_name)
-            await self._update_branches_in_db(repository, branches)
-            return branches
+            db_branches = await self._update_branches_in_db(repository, branches)
+            return db_branches
         except Exception as e:
             logger.error(
                 f"Failed to update branches for {repository.full_name}: {str(e)}"
@@ -140,7 +139,7 @@ class GitHubService:
     async def _update_branches_in_db(
         self, repository: Repository, branches: List[dict]
     ):
-        """Async method to update branches in database using bulk operations"""
+        """Async method to update branches in database using bulk operations and return refreshed objects"""
         # Get existing branches
         existing_branches_query = repository.branches.all()
         existing_branches = {
@@ -189,6 +188,15 @@ class GitHubService:
                 to_update, fields=["protected", "last_commit_sha", "last_commit_url"]
             )
 
+        # Refresh all branches from DB to get complete updated instances
+        refreshed_branches = [
+            branch
+            async for branch in repository.branches.filter(
+                name__in=current_branch_names
+            )
+        ]
+
+        return refreshed_branches
 
     async def _update_permissions(self, repository: Repository, permissions: dict):
         """Update repository permissions using bulk operations"""
@@ -197,8 +205,8 @@ class GitHubService:
 
         # Fetch existing permissions in bulk (usually just 1 record)
         existing_perms = [
-            perm async for perm in 
-            RepositoryPermission.objects.filter(repository=repository)
+            perm
+            async for perm in RepositoryPermission.objects.filter(repository=repository)
         ]
 
         if existing_perms:
@@ -209,10 +217,9 @@ class GitHubService:
                 perm.push = permissions.get("push", False)
                 perm.triage = permissions.get("triage", False)
                 perm.pull = permissions.get("pull", True)
-            
+
             await RepositoryPermission.objects.abulk_update(
-                existing_perms,
-                fields=["admin", "maintain", "push", "triage", "pull"]
+                existing_perms, fields=["admin", "maintain", "push", "triage", "pull"]
             )
         else:
             # Bulk create new record (even if just one)
@@ -226,7 +233,9 @@ class GitHubService:
             )
             await RepositoryPermission.objects.abulk_create([new_perms])
 
-    async def _update_license(self, repository: Repository, license_data: Optional[dict]):
+    async def _update_license(
+        self, repository: Repository, license_data: Optional[dict]
+    ):
         """Alternative with bulk operations (less optimal for this case)"""
         if not license_data:
             return
@@ -240,8 +249,8 @@ class GitHubService:
         }
 
         existing_licenses = [
-            license_obj async for license_obj in 
-            License.objects.filter(repository=repository)
+            license_obj
+            async for license_obj in License.objects.filter(repository=repository)
         ]
 
         if existing_licenses:
@@ -249,14 +258,13 @@ class GitHubService:
                 for field, value in defaults.items():
                     setattr(license_obj, field, value)
             await License.objects.abulk_update(
-                existing_licenses,
-                fields=["key", "name", "spdx_id", "url", "node_id"]
+                existing_licenses, fields=["key", "name", "spdx_id", "url", "node_id"]
             )
         else:
-            await License.objects.abulk_create([
-                License(repository=repository, **defaults)
-            ])
-        
+            await License.objects.abulk_create(
+                [License(repository=repository, **defaults)]
+            )
+
     async def _update_topics(
         self, access_token: str, repository: Repository, repo_name: str
     ):
@@ -288,7 +296,7 @@ class GitHubService:
 
         # Identify topics that need to be created
         topics_to_create = [name for name in topics if name not in existing_topics]
-        
+
         # Bulk create missing topics
         if topics_to_create:
             new_topics = await Topic.objects.abulk_create(
@@ -299,3 +307,12 @@ class GitHubService:
         # Bulk add all topics to repository
         topic_objects = [existing_topics[name] for name in topics]
         await repository.topics.aadd(*topic_objects)
+
+    async def fetch_codebase(self, repository, owner, branch, access_token):
+        try:
+            return await self._make_request(
+                access_token,
+                f"https://api.github.com/repos/{owner}/{repository}/git/trees/{branch}",
+            )
+        except Exception as e:
+            logger.error(f"Failed to fetch codebase for {repository}: {str(e)}")

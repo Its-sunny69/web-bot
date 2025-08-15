@@ -1,8 +1,9 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
-from accounts.models import User, Repository
+from accounts.models import User, Repository, Branch
 from accounts.services.github_service import GitHubService
 from ..helpers import get_github_user
+from preview.services import update_codebase
 
 github_service = GitHubService()
 
@@ -46,7 +47,11 @@ async def select_repo_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     repo_id = int(data.split(":")[1])
 
     # Fetch repo & update user preference
-    repo = await Repository.objects.filter(id=repo_id).afirst()
+    repo = (
+        await Repository.objects.prefetch_related("branches")
+        .filter(id=repo_id)
+        .afirst()
+    )
     user = await User.objects.filter(chat_id=query.from_user.id).afirst()
     if not repo or not user:
         await query.edit_message_text("Something went wrong. Please try again.")
@@ -63,11 +68,7 @@ async def select_repo_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 
         if branch_data:
             keyboard = [
-                [
-                    InlineKeyboardButton(
-                        b["name"], callback_data=f"select_branch:{b['name']}"
-                    )
-                ]
+                [InlineKeyboardButton(b.name, callback_data=f"select_branch:{b.id}")]
                 for b in branch_data
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
@@ -91,12 +92,21 @@ async def select_branch_callback(update: Update, context: ContextTypes.DEFAULT_T
     query = update.callback_query
     await query.answer()
 
-    branch_name = query.data.split(":")[1]
-    user = await User.objects.filter(chat_id=query.from_user.id).afirst()
+    branch_id = query.data.split(":")[1]
+    user = (
+        await User.objects.select_related("selected_repo")
+        .filter(chat_id=query.from_user.id)
+        .afirst()
+    )
+    branch = await Branch.objects.filter(id=branch_id).afirst()
 
-    user.current_branch = branch_name
+    user.current_branch = branch.name
     await user.asave()
 
+    await update_codebase(
+        user, user.selected_repo, branch, branch.last_commit_sha, user.access_token
+    )
+
     await query.edit_message_text(
-        f"🌿 Branch set to *{branch_name}*", parse_mode="Markdown"
+        f"🌿 Branch set to *{branch.name}*", parse_mode="Markdown"
     )
