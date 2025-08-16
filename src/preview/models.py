@@ -47,7 +47,7 @@ class RepositoryFile(models.Model):
         help_text="The code state this file belongs to",
     )
     path = models.CharField(max_length=500)
-    content = models.TextField()
+    content = models.TextField(null=True, blank=True)
     is_binary = models.BooleanField(default=False)
     change_type = models.CharField(
         max_length=20,
