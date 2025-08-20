@@ -4,52 +4,45 @@ from django.views.decorators.csrf import csrf_exempt
 from .models import RepositoryCodeState, RepositoryFile
 import json
 
-
-def preview_embed(request, repo_id):
+@csrf_exempt
+def redirect_to_stackblitz(request, repo_id):
     """
-    Render the preview embed template for a specific repository.
+    Renders a page that redirects the user to StackBlitz using SDK.
     """
     try:
-        # Get the latest code state for the repository
         code_state = RepositoryCodeState.objects.filter(
             repository_id=repo_id
         ).order_by('-created_at').first()
         
         if not code_state:
             return render(request, 'preview/error.html', {
-                'error': 'No code state found for this repository'
+                'error': 'No code state found for this repository.'
             })
         
-        # Get all files for this code state
         files = code_state.files.all()
         
-        # Prepare files data for StackBlitz
         files_data = {}
         for file in files:
-            files_data[file.file_path] = file.content
+            if file.path.endswith('.json'): continue
+            files_data[file.path] = file.content
         
-        # Ensure we have an index.html file
-        if 'index.html' not in files_data:
-            # Try to find any HTML file to use as index
-            html_files = [f for f in files if f.file_type == 'html']
-            if html_files:
-                # Use the first HTML file as index
-                first_html = html_files[0]
-                files_data['index.html'] = first_html.content
-        
+        if not files_data:
+            files_data['index.html'] = '<h1>No files found.</h1>'
+
         context = {
-            'repo_name': code_state.repository.name,
             'files_data': json.dumps(files_data),
-            'code_state': code_state,
+            'repo_name': code_state.repository.name,
         }
+
+        print(files_data.keys())
         
-        return render(request, 'preview_embed.html', context)
+        # 🌟 This view renders a template, which will contain the JS for redirection.
+        return render(request, 'preview/redirect_to_stackblitz.html', context)
         
     except Exception as e:
         return render(request, 'preview/error.html', {
-            'error': f'Error loading preview: {str(e)}'
+            'error': f'Error preparing redirect to StackBlitz: {str(e)}'
         })
-
 
 def repository_files_api(request, repo_id):
     """

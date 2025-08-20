@@ -12,6 +12,7 @@ from ..commands.unknown_command import unknown_command
 from ..commands.current_repo import current_repo_command
 from ..commands.menu import menu_command, menu_callback
 from ..commands.help import help_command
+from ..commands.preview import preview
 
 
 def register_commands(app):
@@ -27,6 +28,7 @@ def register_commands(app):
     app.add_handler(
         CallbackQueryHandler(select_branch_callback, pattern="^select_branch:")
     )
+    app.add_handler(CommandHandler("preview", preview))
     app.add_handler(MessageHandler(filters.COMMAND, unknown_command))
 
 
@@ -42,6 +44,7 @@ async def set_commands(app):
             command="/current_repo",
             description="View the current repository and branch",
         ),
+        BotCommand(command="/preview", description="Get a preview of your current selection"),
         BotCommand(command="/menu", description="Show all available commands"),
         BotCommand(command="/help", description="Get help and usage guide"),
     ]
