@@ -47,6 +47,13 @@ class RepositoryFile(models.Model):
         help_text="The code state this file belongs to",
     )
     path = models.CharField(max_length=500)
+    file_type = models.CharField(
+        max_length=10,
+        choices=[("html", "HTML"), ("css", "CSS"), ("js", "JavaScript")],
+        null=True, # Allow null for files without these types
+        blank=True
+    )
+    size_bytes = models.PositiveIntegerField(default=0)
     content = models.TextField(null=True, blank=True)
     is_binary = models.BooleanField(default=False)
     change_type = models.CharField(
@@ -67,9 +74,6 @@ class RepositoryFile(models.Model):
             models.Index(fields=["path"]),
         ]
         unique_together = ("code_state", "path")
-
-    def __str__(self):
-        return self.path
 
     def __str__(self):
         return f"{self.path} ({self.file_type})"
