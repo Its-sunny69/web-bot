@@ -1,3 +1,4 @@
+import asyncio
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from accounts.models import User, Repository, Branch
@@ -39,6 +40,7 @@ async def select_repo_command(update: Update, context: ContextTypes.DEFAULT_TYPE
 async def select_repo_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+    await query.edit_message_text("Retrieving repository branches...")
 
     # Extract repo_id from callback data
     data = query.data
@@ -88,10 +90,24 @@ async def select_repo_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         )
 
 
+async def animate_loading(query, context, loading_message):
+    dots = ["", ".", "..", "..."]
+    i = 0
+    while not context.chat_data.get("setup_done"):
+        await asyncio.sleep(0.1)
+        i = (i + 1) % len(dots)
+        try:
+            await query.edit_message_text(
+                f"{loading_message}{dots[i]}", parse_mode="Markdown"
+            )
+        except Exception:
+            break
+
+
 async def select_branch_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-
+    await query.edit_message_text("Setting up codebase...")
     branch_id = query.data.split(":")[1]
     user = (
         await User.objects.select_related("selected_repo")
@@ -103,10 +119,32 @@ async def select_branch_callback(update: Update, context: ContextTypes.DEFAULT_T
     user.current_branch = branch.name
     await user.asave()
 
+    loading_message = f"Setting up codebase for *{branch.name}*"
+    await query.edit_message_text(loading_message, parse_mode="Markdown")
+    # Init flag
+    context.chat_data["setup_done"] = False
+
+    # Animate the loading dots while update_codebase runs
+
+    # Run the animation in background
+    asyncio.create_task(
+        animate_loading(query=query, context=context, loading_message=loading_message)
+    )
+
+    # Do the heavy work
     await update_codebase(
         user, user.selected_repo, branch, branch.last_commit_sha, user.access_token
     )
 
+    # Mark setup done so animation stops
+    context.chat_data["setup_done"] = True
+    await asyncio.sleep(0)  # let animate_loading break cleanly
+
+    # Final message
     await query.edit_message_text(
         f"🌿 Branch set to *{branch.name}*", parse_mode="Markdown"
+    )
+
+    await context.bot.send_message(
+        chat_id=query.from_user.id, text="Now run /preview to view your application."
     )

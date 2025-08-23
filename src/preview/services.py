@@ -85,10 +85,6 @@ async def create_initial_snapshot(user, repo_obj, branch_obj, commit_sha, github
 
     # Bulk create all files
     await RepositoryFile.objects.abulk_create(files_to_create)
-
-    print("Printing files to create:")
-    print(files_to_create)
-
     return code_state
 
 
