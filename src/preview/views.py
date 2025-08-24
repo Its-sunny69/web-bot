@@ -7,10 +7,16 @@ import json
 import os, tempfile
 import mimetypes
 from django.utils._os import safe_join
+from urllib.parse import quote
 
 import re
 import base64
 from typing import Tuple, Dict
+
+def _encode_preview_url(repo_id, rel_path):
+    # ensure rel_path starts with '/'
+    rel_path = "/" + rel_path.lstrip("/")
+    return f"/preview/{quote(str(repo_id))}{quote(rel_path)}"
 
 # -----------------------
 # HTML/CSS rewrite helpers
@@ -22,34 +28,30 @@ _HTML_ABS_ATTR = re.compile(
     re.IGNORECASE
 )
 
-def _rewrite_html_urls(html: str, prefix: str) -> str:
-    """
-    Rewrites <... src="/foo"> to <... src="/preview/<repo_id>/foo">.
-    prefix should be something like "/preview/123" (no trailing slash).
-    Leaves protocol-relative //... and absolute URLs intact.
-    """
-    def repl(m):
-        rest = m.group('rest')
-        # If rest starts with '/', it's likely protocol-relative (//...) -> skip rewriting.
-        # (The regex consumed only one leading '/', so protocol-relative will start with '/')
-        if rest.startswith('/'):
-            return m.group(0)
-        return f'{m.group("attr")}{m.group("q")}{prefix}/{rest}{m.group("q")}'
-    return _HTML_ABS_ATTR.sub(repl, html)
+def _rewrite_html_urls(html, repo_id):
+    from bs4 import BeautifulSoup
+    soup = BeautifulSoup(html, "html.parser")
+
+    for tag in soup.find_all(["a", "link", "script", "img"]):
+        for attr in ["href", "src"]:
+            if tag.has_attr(attr):
+                val = tag[attr]
+                if val.startswith("/"):  # root-relative
+                    tag[attr] = _encode_preview_url(repo_id, val)
+
+    return str(soup)
 
 # Rewrite CSS url('/foo.png') -> url('/preview/<repo_id>/foo.png')
 _CSS_URL_ABS = re.compile(r'url\(\s*(?P<q>[\'"]?)/(?P<rest>[^)\'"]+)(?P=q)\s*\)', re.IGNORECASE)
 
-def _rewrite_css_urls(css: str, prefix: str) -> str:
-    def repl(m):
-        q = m.group('q') or ''
-        rest = m.group('rest')
-        # If rest starts with '/', it's protocol-relative (//...) -> skip
-        if rest.startswith('/'):
-            return m.group(0)
-        return f'url({q}{prefix}/{rest}{q})'
-    return _CSS_URL_ABS.sub(repl, css)
-
+def _rewrite_css_urls(css, repo_id):
+    def repl(match):
+        url = match.group(1).strip('"\'')
+        if url.startswith("/"):
+            return f"url({_encode_preview_url(repo_id, url)})"
+        return match.group(0)
+    return re.sub(r'url\(([^)]+)\)', repl, css)
+    
 # -----------------------
 # Existing StackBlitz redirect view (unchanged)
 # -----------------------
@@ -202,62 +204,62 @@ def get_or_create_tempdir_for_project(code_state: RepositoryCodeState, files: Di
 # -----------------------
 # Existing repository_files_api (unchanged)
 # -----------------------
-def repository_files_api(request, repo_id):
-    """
-    API endpoint to get repository files as JSON.
-    """
-    try:
-        code_state = RepositoryCodeState.objects.filter(
-            repository_id=repo_id
-        ).order_by('-created_at').first()
+# def repository_files_api(request, repo_id):
+#     """
+#     API endpoint to get repository files as JSON.
+#     """
+#     try:
+#         code_state = RepositoryCodeState.objects.filter(
+#             repository_id=repo_id
+#         ).order_by('-created_at').first()
         
-        if not code_state:
-            return JsonResponse({'error': 'Repository not found'}, status=404)
+#         if not code_state:
+#             return JsonResponse({'error': 'Repository not found'}, status=404)
         
-        files = code_state.files.all()
-        files_data = []
+#         files = code_state.files.all()
+#         files_data = []
         
-        for file in files:
-            files_data.append({
-                'id': file.id,
-                'file_path': getattr(file, 'path', getattr(file, 'file_path', None)),
-                'file_name': getattr(file, 'path', None),
-                'file_type': file.file_type,
-                'size_bytes': file.size_bytes,
-                'content': file.content,
-                'created_at': file.created_at.isoformat(),
-                'updated_at': file.updated_at.isoformat(),
-            })
+#         for file in files:
+#             files_data.append({
+#                 'id': file.id,
+#                 'file_path': getattr(file, 'path', getattr(file, 'file_path', None)),
+#                 'file_name': getattr(file, 'path', None),
+#                 'file_type': file.file_type,
+#                 'size_bytes': file.size_bytes,
+#                 'content': file.content,
+#                 'created_at': file.created_at.isoformat(),
+#                 'updated_at': file.updated_at.isoformat(),
+#             })
         
-        return JsonResponse({
-            'repository': code_state.repository.name,
-            'commit_hash': getattr(code_state, 'commit_sha', getattr(code_state, 'commit_hash', None)),
-            'branch': getattr(code_state, 'branch_id', None),
-            'files': files_data,
-            'total_files': len(files_data)
-        })
+#         return JsonResponse({
+#             'repository': code_state.repository.name,
+#             'commit_hash': getattr(code_state, 'commit_sha', getattr(code_state, 'commit_hash', None)),
+#             'branch': getattr(code_state, 'branch_id', None),
+#             'files': files_data,
+#             'total_files': len(files_data)
+#         })
         
-    except Exception as e:
-        return JsonResponse({'error': str(e)}, status=500)
+#     except Exception as e:
+#         return JsonResponse({'error': str(e)}, status=500)
 
 
 # -----------------------
 # preview index (unchanged)
 # -----------------------
-def preview_index(request):
-    """
-    Index page showing available preview options.
-    """
-    # Get some basic stats
-    total_repos = RepositoryCodeState.objects.count()
-    total_files = RepositoryFile.objects.count()
+# def preview_index(request):
+#     """
+#     Index page showing available preview options.
+#     """
+#     # Get some basic stats
+#     total_repos = RepositoryCodeState.objects.count()
+#     total_files = RepositoryFile.objects.count()
     
-    context = {
-        'total_repos': total_repos,
-        'total_files': total_files,
-    }
+#     context = {
+#         'total_repos': total_repos,
+#         'total_files': total_files,
+#     }
     
-    return render(request, 'index.html', context)
+#     return render(request, 'index.html', context)
 
 
 # -----------------------
@@ -320,7 +322,10 @@ def preview_serve(request, repo_id, path=""):
     # directory -> list
     if os.path.isdir(target_path):
         try:
-            entries = sorted(os.listdir(target_path))
+            entries = [{
+                "name": name,
+                "url": _encode_preview_url(repo_id, os.path.join(path, name))
+            } for name in sorted(os.listdir(target_path))]
         except Exception:
             entries = []
         return render(request, "preview/file_browser.html", {
