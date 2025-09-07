@@ -9,7 +9,7 @@ class CodeEmbedding(models.Model):
     file_path = models.TextField()           
     chunk_id = models.CharField(max_length=255, blank=True, null=True)
     content = models.TextField()             
-    embedding = VectorField(dimensions=1536) 
+    embedding = VectorField(dimensions=384) 
     metadata = models.JSONField(blank=True, null=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
