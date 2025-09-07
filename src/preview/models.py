@@ -40,6 +40,13 @@ class RepositoryCodeState(models.Model):
 
 
 class RepositoryFile(models.Model):
+    repository = models.ForeignKey(
+        Repository,
+        on_delete=models.CASCADE,
+        related_name="files",
+        help_text="The repository this file belongs to",
+        null=True
+    )
     code_state = models.ForeignKey(
         RepositoryCodeState,
         on_delete=models.CASCADE,
@@ -50,8 +57,8 @@ class RepositoryFile(models.Model):
     file_type = models.CharField(
         max_length=10,
         choices=[("html", "HTML"), ("css", "CSS"), ("js", "JavaScript")],
-        null=True, # Allow null for files without these types
-        blank=True
+        null=True,  # Allow null for files without these types
+        blank=True,
     )
     size_bytes = models.PositiveIntegerField(default=0)
     content = models.TextField(null=True, blank=True)
