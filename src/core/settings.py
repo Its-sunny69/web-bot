@@ -44,7 +44,8 @@ INSTALLED_APPS = [
     "ninja_jwt",
     'accounts',
     'telegram_bot',
-    'preview'
+    'preview',
+    'aihub'
 ]
 
 NINJA_JWT = {

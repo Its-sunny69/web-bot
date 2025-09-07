@@ -74,6 +74,7 @@ async def create_initial_snapshot(user, repo_obj, branch_obj, commit_sha, github
     # Prepare files for bulk creation
     files_to_create = [
         RepositoryFile(
+            repository=repo_obj,
             code_state=code_state,
             path=path,
             content=content if not is_binary else None,
@@ -126,6 +127,7 @@ async def create_incremental_snapshot(
     # Prepare files for bulk creation
     files_to_create = [
         RepositoryFile(
+            repository=repo_obj,
             code_state=code_state,
             path=path,
             content=content if not is_binary else None,
@@ -138,6 +140,7 @@ async def create_incremental_snapshot(
     # Add removed files
     files_to_create.extend(
         RepositoryFile(
+            repository=repo_obj,
             code_state=code_state,
             path=path,
             content=None,
