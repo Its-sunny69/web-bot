@@ -10,5 +10,5 @@ urlpatterns = [
     re_path(r"(?P<repo_id>\d+)/(?P<path>.*)$", views.preview_serve, name="preview_serve"),
 
     path('redirect/<int:repo_id>/', views.redirect_to_stackblitz, name='redirect_to_stackblitz'),
-    path('api/files/<int:repo_id>/', views.repository_files_api, name='repository_files_api'),
+    # path('api/files/<int:repo_id>/', views.repository_files_api, name='repository_files_api'),
 ]
